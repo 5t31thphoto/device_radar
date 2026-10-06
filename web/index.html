@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeviceRadar — Mantis</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
+<link rel="apple-touch-icon" href="apple-touch.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #121212;
+    --panel: #1e1e1e;
+    --panel2: #2a2a2a;
+    --teal: #007373;
+    --teal-bright: #00a0a0;
+    --purple: #5d005d;
+    --purple-soft: #7a1a7a;
+    --lime: #b4ff00;
+    --lime-dim: #8bcc00;
+    --text: #e8e8e8;
+    --muted: #9e9e9e;
+    --line: #333;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background:
+      radial-gradient(900px 500px at 85% -10%, #1a3a3a 0%, transparent 55%),
+      radial-gradient(700px 400px at 5% 110%, #2a0a2a 0%, transparent 50%),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 72px; }
+
+  /* hero */
+  .hero {
+    display: flex; gap: 24px; align-items: center;
+    padding: 12px 4px 28px;
+  }
+  .mascot {
+    flex: 0 0 140px;
+    filter: drop-shadow(0 0 18px rgba(0,115,115,0.45));
+  }
+  .mascot img {
+    width: 140px; height: 140px; object-fit: contain;
+    animation: bob 4.2s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%,100% { transform: translateY(0) rotate(-1.5deg); }
+    50% { transform: translateY(-7px) rotate(1.5deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mascot img { animation: none; }
+  }
+  .headline {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(28px, 5.5vw, 42px);
+    line-height: 1.05; margin: 0 0 8px;
+  }
+  .headline small {
+    display: block;
+    font-size: 13px; letter-spacing: 0.16em;
+    color: var(--teal-bright); font-weight: 600;
+    margin-bottom: 8px; text-transform: uppercase;
+  }
+  .sub { color: var(--muted); max-width: 42ch; margin: 0; }
+
+  /* cards */
+  .step {
+    background: linear-gradient(180deg, var(--panel), #181818);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px 22px 22px;
+    margin: 16px 0;
+  }
+  .step h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600; margin: 0.1em 0 0.5em;
+    font-size: 20px; display: flex; align-items: center; gap: 10px;
+  }
+  .pip {
+    flex: 0 0 28px; height: 28px; border-radius: 8px;
+    background: var(--teal); color: #000;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .step p { color: var(--muted); margin: 0 0 12px; font-size: 14.5px; }
+
+  /* install button theming */
+  esp-web-install-button {
+    display: block; margin: 10px 0 4px;
+  }
+  .install-wrap {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  }
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    background: var(--purple); color: var(--lime);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  }
+
+  /* feature list */
+  .features {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-top: 8px;
+  }
+  @media (max-width: 520px) { .features { grid-template-columns: 1fr; } }
+  .feat {
+    background: var(--panel2); border-radius: 10px;
+    padding: 12px 14px; border-left: 3px solid var(--teal);
+  }
+  .feat strong { color: var(--lime); display: block; margin-bottom: 2px; }
+  .feat span { color: var(--muted); font-size: 13px; }
+
+  code {
+    background: #0d0d0d; padding: 1px 6px; border-radius: 5px;
+    font-size: 13px; color: var(--lime-dim);
+  }
+  a { color: var(--teal-bright); }
+  footer {
+    color: var(--muted); font-size: 12.5px;
+    text-align: center; margin-top: 36px;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="mascot" aria-hidden="true">
+      <img src="mantis.png" alt="DeviceRadar mantis mascot" width="140" height="140">
+    </div>
+    <div>
+      <h1 class="headline">
+        <small>M5Stack Core2</small>
+        DeviceRadar
+      </h1>
+      <p class="sub">
+        Rotational WiFi + BLE radar. Hold still, turn once, map every signal
+        around you. Offline. No cloud.
+      </p>
+    </div>
+  </div>
+
+  <section class="step">
+    <h2><span class="pip">1</span>Flash the firmware</h2>
+    <p>
+      Plug your <strong>M5Stack Core2</strong> into USB, put it in download mode
+      if needed (hold BtnB while resetting), then hit Install.
+    </p>
+    <div class="install-wrap">
+      <esp-web-install-button manifest="./firmware/manifest.json">
+        <button slot="activate"
+          style="
+            font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16px;
+            background:linear-gradient(135deg, var(--teal), #005555);
+            color:#fff; border:none; border-radius:12px;
+            padding:14px 28px; cursor:pointer;
+            box-shadow:0 0 0 1px #00a0a044, 0 4px 20px #00737344;
+          ">
+          Install DeviceRadar
+        </button>
+        <span slot="unsupported">
+          Your browser does not support Web Serial. Use Chrome or Edge on desktop.
+        </span>
+        <span slot="not-allowed">
+          Permission denied — allow serial access when prompted.
+        </span>
+      </esp-web-install-button>
+      <span class="badge">ESP32 · Core2</span>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><span class="pip">2</span>What you get</h2>
+    <div class="features">
+      <div class="feat">
+        <strong>WiFi Radar</strong>
+        <span>Guided 360° sweep maps access points by bearing. Radius = relative RSSI.</span>
+      </div>
+      <div class="feat">
+        <strong>BLE Radar</strong>
+        <span>Same for Bluetooth LE advertisements. Live map stays room-fixed while you turn.</span>
+      </div>
+      <div class="feat">
+        <strong>Gyro heading</strong>
+        <span>Gravity-projected yaw — works held flat or upright. No magnetometer needed.</span>
+      </div>
+      <div class="feat">
+        <strong>Mantis UI</strong>
+        <span>Teal · purple · lime · dark grey. Mascot sits in the centre of every scan.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><span class="pip">3</span>On-device controls</h2>
+    <p>
+      <code>BtnA</code> select / rescan &nbsp;·&nbsp;
+      <code>BtnB</code> next menu item &nbsp;·&nbsp;
+      <code>BtnC</code> exit / long-press power off<br>
+      Touch works too. Hold still for calibration, then keep the green needle on the red one for one full turn.
+    </p>
+  </section>
+
+  <footer>
+    DeviceRadar · Mantis theme · ported radar logic from Fox<br>
+    <a href="https://github.com">Source</a> · built for M5Stack Core2 with M5Unified
+  </footer>
+</div>
+</body>
+</html>
