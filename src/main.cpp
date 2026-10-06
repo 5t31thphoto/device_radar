@@ -238,10 +238,8 @@ static void radio_setup_wifi() {
 static void radio_setup_ble() {
     radio_silence_all();
     // BLE only — WiFi is off so no coexistence conflict.
-    if (!BLEDevice::init("")) {
-        Serial.println("BLE init failed");
-        return;
-    }
+    // Arduino-ESP32 BLEDevice::init returns void (not bool).
+    BLEDevice::init("");
     ble_scan = BLEDevice::getScan();
     if (!ble_scan) {
         Serial.println("BLE getScan failed");
@@ -292,18 +290,17 @@ static void radar_worker(void* arg) {
                 radar_push(WiFi.BSSIDstr(i).c_str(), WiFi.SSID(i).c_str(), WiFi.RSSI(i), ym);
             WiFi.scanDelete();
         } else if (ble_scan) {
-            BLEScanResults* res = ble_scan->start(1, false);
+            // Arduino-ESP32 2.x: start() returns BLEScanResults by value, not pointer.
+            BLEScanResults res = ble_scan->start(1, false);
             float ym = (y0 + radar_live_yaw) * 0.5f;
-            int n = res ? res->getCount() : -1;
-            if (res) {
-                for (int i = 0; i < n; ++i) {
-                    BLEAdvertisedDevice d = res->getDevice(i);
-                    String id = String(d.getAddress().toString().c_str());
-                    String nm = d.haveName() ? String(d.getName().c_str()) : id.substring(0, 8);
-                    radar_push(id.c_str(), nm.c_str(), d.getRSSI(), ym);
-                }
-                ble_scan->clearResults();
+            int n = res.getCount();
+            for (int i = 0; i < n; ++i) {
+                BLEAdvertisedDevice d = res.getDevice(i);
+                String id = String(d.getAddress().toString().c_str());
+                String nm = d.haveName() ? String(d.getName().c_str()) : id.substring(0, 8);
+                radar_push(id.c_str(), nm.c_str(), d.getRSSI(), ym);
             }
+            ble_scan->clearResults();
             ble_scan->stop();
             vTaskDelay(pdMS_TO_TICKS(n < 0 ? 600 : 250));
         } else {
