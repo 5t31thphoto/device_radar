@@ -683,7 +683,7 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
     // Manufacturer data
     const uint8_t* mfrp = nullptr; size_t mfrl = 0;
     if (d.haveManufacturerData()) {
-        String md = d.getManufacturerData();
+        String md = d.getManufacturerData().c_str();
         mfrp = (const uint8_t*)md.c_str(); mfrl = md.length();
         if (mfrl >= 2) {
             uint16_t cid = (uint16_t)mfrp[0] | ((uint16_t)mfrp[1] << 8);
