@@ -797,8 +797,12 @@ static void radar_run(bool wifi) {
             if (btn_exit()) { quit = true; break; }
             if (btn_action()) { rescan = true; break; }
             if (btn_next()) {
+                M5.update();
                 // BtnB → device list (worker keeps scanning)
                 device_list_screen(wifi);
+                M5.update();
+                hd.last_us = micros();
+                continue;
                 // redraw radar on return
             }
             float h = radar_heading_update(hd);
