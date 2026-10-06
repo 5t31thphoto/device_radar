@@ -19,11 +19,17 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 #include <esp_heap_caps.h>
+#include <SPI.h>
+#include <SD.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include <math.h>
 #include <string.h>
+#include <string>
+#include <algorithm>
 #include "mantis_sprite.h"
+#include "ble_id.h"
+#include "wifi_id.h"
 
 // ---------------------------------------------------------------------------
 //  Mantis theme colours (RGB565)
@@ -54,11 +60,21 @@ static int CX = 160, CY = 120, R = 95;
 // ---------------------------------------------------------------------------
 struct RadarSource {
     char     id[18];
-    char     name[24];
+    char     name[28];
     int8_t   rssi[RADAR_BINS];
     uint8_t  hits[RADAR_BINS];
     int      strongest;
     uint32_t seen;
+    // identification snapshot (BLE forensic / WiFi meta)
+    char     vendor[20];
+    char     kind[24];
+    char     detail[48];
+    char     addr_type[12];
+    int8_t   last_rssi;
+    int8_t   channel;      // WiFi
+    uint8_t  encrypt;      // WiFi authmode-ish
+    bool     is_ibeacon;
+    char     device_class[32];
 };
 
 static RadarSource* radar_sources = nullptr;
@@ -102,7 +118,34 @@ static int radar_source(const char* id, const String& name) {
     strncpy(radar_sources[i].id, id, sizeof(radar_sources[i].id) - 1);
     strncpy(radar_sources[i].name, name.c_str(), sizeof(radar_sources[i].name) - 1);
     radar_sources[i].strongest = -127;
+    radar_sources[i].last_rssi = -127;
+    radar_sources[i].channel = -1;
+    radar_sources[i].encrypt = 0;
+    radar_sources[i].is_ibeacon = false;
+    radar_sources[i].vendor[0] = 0;
+    radar_sources[i].kind[0] = 0;
+    radar_sources[i].detail[0] = 0;
+    radar_sources[i].addr_type[0] = 0;
+    radar_sources[i].device_class[0] = 0;
     return i;
+}
+
+
+static void radar_apply_meta(int i, const BleIdentity* bid, int8_t channel, uint8_t enc) {
+    if (i < 0 || !radar_sources) return;
+    RadarSource& d = radar_sources[i];
+    if (bid) {
+        if (bid->name[0] && strcmp(bid->name, "(no name)"))
+            strncpy(d.name, bid->name, sizeof(d.name) - 1);
+        strncpy(d.vendor, bid->vendor, sizeof(d.vendor) - 1);
+        strncpy(d.kind, bid->kind, sizeof(d.kind) - 1);
+        strncpy(d.detail, bid->detail, sizeof(d.detail) - 1);
+        strncpy(d.addr_type, bid->addr_type, sizeof(d.addr_type) - 1);
+        d.is_ibeacon = bid->is_ibeacon;
+        d.last_rssi = (int8_t)bid->rssi;
+    }
+    if (channel >= 0) d.channel = channel;
+    d.encrypt = enc;
 }
 
 static void radar_sample(const char* id, const String& name, int rssi, float angle_deg) {
@@ -191,9 +234,19 @@ static float radar_heading_update(RadarHeading& h) {
 // ---------------------------------------------------------------------------
 struct RadarHit {
     char   id[18];
-    char   name[24];
+    char   name[28];
     int8_t rssi;
     float  yaw;
+    // optional identity (BLE) / meta (WiFi)
+    char   vendor[20];
+    char   kind[24];
+    char   detail[48];
+    char   addr_type[12];
+    int8_t channel;
+    uint8_t encrypt;
+    bool   is_ibeacon;
+    bool   has_meta;
+    char   device_class[32];
 };
 
 static QueueHandle_t  radar_q            = nullptr;
@@ -206,43 +259,45 @@ static bool ble_initialized = false;
 
 // Each radar mode fully owns radio setup and teardown.
 // WiFi and BLE never run at the same time — exclusive use, clean hand-off.
+// APIs match Arduino-ESP32 2.x (BLEDevice::init void, start() by value).
 
 static void radio_silence_all() {
     // Stop every RF activity so the next mode starts from a known state.
     esp_wifi_set_promiscuous(false);
     esp_wifi_set_promiscuous_rx_cb(NULL);
     WiFi.scanDelete();
-    WiFi.disconnect(true, true);
+    WiFi.disconnect(true /*wifioff*/, true /*eraseAP*/);
     WiFi.mode(WIFI_OFF);
+
     if (ble_scan) {
         ble_scan->stop();
         ble_scan->clearResults();
+        ble_scan = nullptr;
     }
     if (ble_initialized) {
-        BLEDevice::deinit(true);   // full teardown so WiFi can claim the radio
-        ble_scan = nullptr;
+        // release_memory=false so we can re-init later in the same session
+        BLEDevice::deinit(false);
         ble_initialized = false;
     }
-    delay(100);
+    delay(120);
 }
 
 static void radio_setup_wifi() {
     radio_silence_all();
-    // Prefer WiFi; coexistence APIs are not needed when BLE is fully off.
     WiFi.mode(WIFI_STA);
-    WiFi.disconnect(true, false);
-    esp_wifi_start();
+    WiFi.disconnect(false, false);
+    // WiFi.mode(STA) starts the driver on Arduino-ESP32 2.x; no extra esp_wifi_start needed
     delay(80);
 }
 
 static void radio_setup_ble() {
     radio_silence_all();
-    // BLE only — WiFi is off so no coexistence conflict.
-    // Arduino-ESP32 BLEDevice::init returns void (not bool).
+    // BLEDevice::init returns void on Arduino-ESP32 2.x
     BLEDevice::init("");
     ble_scan = BLEDevice::getScan();
     if (!ble_scan) {
         Serial.println("BLE getScan failed");
+        ble_initialized = false;
         return;
     }
     ble_scan->setActiveScan(true);
@@ -252,18 +307,17 @@ static void radio_setup_ble() {
 }
 
 static void radio_teardown() {
-    // Called when a radar exits (or before switching modes).
     if (ble_scan) {
         ble_scan->stop();
         ble_scan->clearResults();
+        ble_scan = nullptr;
     }
     WiFi.scanDelete();
     esp_wifi_set_promiscuous(false);
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     if (ble_initialized) {
-        BLEDevice::deinit(true);
-        ble_scan = nullptr;
+        BLEDevice::deinit(false);
         ble_initialized = false;
     }
     delay(80);
@@ -276,6 +330,11 @@ static void radar_push(const char* id, const char* name, int rssi, float yaw) {
     strncpy(h.name, name, sizeof(h.name) - 1);
     h.rssi = (int8_t)constrain(rssi, -127, 0);
     h.yaw  = yaw;
+    h.channel = -1;
+    if (radar_q) xQueueSend(radar_q, &h, 0);
+}
+
+static void radar_push_full(const RadarHit& h) {
     if (radar_q) xQueueSend(radar_q, &h, 0);
 }
 
@@ -284,25 +343,54 @@ static void radar_worker(void* arg) {
     while (radar_worker_run) {
         float y0 = radar_live_yaw;
         if (wifi) {
-            int n = WiFi.scanNetworks(false, true, false, 60);
+            int n = WiFi.scanNetworks(false, true /*show_hidden*/, false /*passive*/, 400 /*ms/chan*/);
             float ym = (y0 + radar_live_yaw) * 0.5f;
-            for (int i = 0; i < n; ++i)
-                radar_push(WiFi.BSSIDstr(i).c_str(), WiFi.SSID(i).c_str(), WiFi.RSSI(i), ym);
+            if (n < 0) n = 0;
+            for (int i = 0; i < n; ++i) {
+                WifiIdentity wid;
+                wifi_identify(i, wid);
+                RadarHit h;
+                memset(&h, 0, sizeof h);
+                strncpy(h.id, wid.bssid, sizeof(h.id) - 1);
+                strncpy(h.name, wid.ssid, sizeof(h.name) - 1);
+                h.rssi = (int8_t)constrain(wid.rssi, -127, 0);
+                h.yaw = ym;
+                h.channel = wid.channel;
+                h.encrypt = wid.encrypt;
+                h.has_meta = true;
+                strncpy(h.vendor, wid.vendor, sizeof(h.vendor) - 1);
+                strncpy(h.kind, wid.kind, sizeof(h.kind) - 1);
+                strncpy(h.detail, wid.detail, sizeof(h.detail) - 1);
+                strncpy(h.device_class, wid.device_class, sizeof(h.device_class) - 1);
+                radar_push_full(h);
+            }
             WiFi.scanDelete();
         } else if (ble_scan) {
-            // Arduino-ESP32 2.x: start() returns BLEScanResults by value, not pointer.
             BLEScanResults res = ble_scan->start(1, false);
             float ym = (y0 + radar_live_yaw) * 0.5f;
             int n = res.getCount();
             for (int i = 0; i < n; ++i) {
                 BLEAdvertisedDevice d = res.getDevice(i);
-                String id = String(d.getAddress().toString().c_str());
-                String nm = d.haveName() ? String(d.getName().c_str()) : id.substring(0, 8);
-                radar_push(id.c_str(), nm.c_str(), d.getRSSI(), ym);
+                BleIdentity idn;
+                ble_identify(d, idn);
+                RadarHit h;
+                memset(&h, 0, sizeof h);
+                strncpy(h.id, idn.addr, sizeof(h.id) - 1);
+                strncpy(h.name, idn.name, sizeof(h.name) - 1);
+                h.rssi = (int8_t)constrain(idn.rssi, -127, 0);
+                h.yaw = ym;
+                h.has_meta = true;
+                h.is_ibeacon = idn.is_ibeacon;
+                h.channel = -1;
+                strncpy(h.vendor, idn.vendor, sizeof(h.vendor) - 1);
+                strncpy(h.kind, idn.kind, sizeof(h.kind) - 1);
+                strncpy(h.detail, idn.detail, sizeof(h.detail) - 1);
+                strncpy(h.addr_type, idn.addr_type, sizeof(h.addr_type) - 1);
+                strncpy(h.device_class, idn.device_class, sizeof(h.device_class) - 1);
+                radar_push_full(h);
             }
             ble_scan->clearResults();
-            ble_scan->stop();
-            vTaskDelay(pdMS_TO_TICKS(n < 0 ? 600 : 250));
+            vTaskDelay(pdMS_TO_TICKS(250));
         } else {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
@@ -329,8 +417,25 @@ static void radar_worker_stop() {
 
 static void radar_drain() {
     RadarHit h;
-    while (radar_q && xQueueReceive(radar_q, &h, 0) == pdTRUE)
+    while (radar_q && xQueueReceive(radar_q, &h, 0) == pdTRUE) {
         radar_sample(h.id, String(h.name), h.rssi, h.yaw);
+        if (h.has_meta) {
+            int idx = radar_find(h.id);
+            if (idx >= 0) {
+                RadarSource& d = radar_sources[idx];
+                if (h.name[0]) strncpy(d.name, h.name, sizeof(d.name) - 1);
+                strncpy(d.vendor, h.vendor, sizeof(d.vendor) - 1);
+                strncpy(d.kind, h.kind, sizeof(d.kind) - 1);
+                strncpy(d.detail, h.detail, sizeof(d.detail) - 1);
+                strncpy(d.addr_type, h.addr_type, sizeof(d.addr_type) - 1);
+                d.is_ibeacon = h.is_ibeacon;
+                d.last_rssi = h.rssi;
+                if (h.channel >= 0) d.channel = h.channel;
+                d.encrypt = h.encrypt;
+                if (h.device_class[0]) strncpy(d.device_class, h.device_class, sizeof(d.device_class)-1);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +537,7 @@ static void radar_draw(float green, float red, bool wifi, RadarPhase ph, float h
         ? "hold still..."
         : ph == RADAR_MEASURE
             ? (green < -25.0f ? "other way!" : "turn: green on red")
-            : "A=rescan  C=exit";
+            : "A=rescan  B=list  C=exit";
     canvas->drawString(hint, 160, 238);
 
     canvas->pushSprite(0, 0);
@@ -463,6 +568,187 @@ static bool btn_next() {
 // ---------------------------------------------------------------------------
 //  Radar run
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+//  Device list screen (WiFi + BLE)
+// ---------------------------------------------------------------------------
+static int list_sort_idx[RADAR_SOURCES];
+
+static void list_build_sorted() {
+    for (int i = 0; i < radar_n; ++i) list_sort_idx[i] = i;
+    // strongest RSSI first
+    for (int a = 0; a < radar_n; ++a)
+        for (int b = a + 1; b < radar_n; ++b)
+            if (radar_sources[list_sort_idx[b]].strongest >
+                radar_sources[list_sort_idx[a]].strongest) {
+                int t = list_sort_idx[a];
+                list_sort_idx[a] = list_sort_idx[b];
+                list_sort_idx[b] = t;
+            }
+}
+
+static void draw_device_list(bool wifi, int sel, int scroll) {
+    M5.Display.fillScreen(COL_BG);
+    M5.Display.setTextDatum(top_left);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.setTextColor(COL_TEAL);
+    M5.Display.drawString(wifi ? "WiFi devices" : "BLE devices", 6, 4);
+    M5.Display.setTextColor(COL_LIME);
+    char nb[12];
+    snprintf(nb, sizeof nb, "%d", radar_n);
+    M5.Display.setTextDatum(top_right);
+    M5.Display.drawString(nb, 314, 4);
+
+    M5.Display.setFont(&fonts::Font0);
+    const int row_h = 36;
+    const int top = 28;
+    const int visible = 5;
+
+    if (radar_n == 0) {
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.setTextColor(COL_HINT);
+        M5.Display.drawString("no devices yet — keep scanning", 160, 120);
+    }
+
+    for (int row = 0; row < visible; ++row) {
+        int li = scroll + row;
+        if (li >= radar_n) break;
+        RadarSource& d = radar_sources[list_sort_idx[li]];
+        int y = top + row * row_h;
+        bool on = (li == sel);
+        M5.Display.fillRoundRect(4, y, 312, row_h - 2, 6, on ? COL_TEAL : COL_PANEL);
+        M5.Display.setTextDatum(top_left);
+        M5.Display.setTextColor(on ? COL_BG : COL_TEXT);
+        // line 1: name + rssi
+        char line1[40];
+        snprintf(line1, sizeof line1, "%s", d.name[0] ? d.name : d.id);
+        M5.Display.drawString(line1, 10, y + 3);
+        M5.Display.setTextDatum(top_right);
+        char rs[10];
+        snprintf(rs, sizeof rs, "%d", d.strongest);
+        M5.Display.setTextColor(on ? COL_BG : COL_LIME);
+        M5.Display.drawString(rs, 310, y + 3);
+        // line 2: vendor / kind / detail
+        M5.Display.setTextDatum(top_left);
+        M5.Display.setTextColor(on ? COL_BG : COL_HINT);
+        char line2[48];
+        if (wifi) {
+            if (d.device_class[0])
+                snprintf(line2, sizeof line2, "%s · %s", d.device_class, d.kind[0]?d.kind:"");
+            else
+                snprintf(line2, sizeof line2, "%s  %s", d.id, d.detail[0] ? d.detail : "");
+        } else {
+            // Prefer device_class (what it IS) then vendor
+            if (d.device_class[0])
+                snprintf(line2, sizeof line2, "%s · %s", d.device_class, d.vendor[0]?d.vendor:"");
+            else
+                snprintf(line2, sizeof line2, "%s · %s · %s",
+                         d.vendor[0] ? d.vendor : "—",
+                         d.kind[0] ? d.kind : "",
+                         d.addr_type[0] ? d.addr_type : "");
+        }
+        M5.Display.drawString(line2, 10, y + 18);
+    }
+
+    M5.Display.setTextDatum(bottom_center);
+    M5.Display.setTextColor(COL_HINT);
+    M5.Display.drawString("A/B scroll  C back  holdA detail", 160, 236);
+}
+
+static void draw_device_detail(bool wifi, int idx) {
+    if (idx < 0 || idx >= radar_n) return;
+    RadarSource& d = radar_sources[list_sort_idx[idx]];
+    M5.Display.fillScreen(COL_BG);
+    M5.Display.setTextDatum(top_left);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.setTextColor(COL_TEAL);
+    M5.Display.drawString(wifi ? "AP detail" : "BLE detail", 6, 4);
+
+    M5.Display.setFont(&fonts::Font0);
+    M5.Display.setTextColor(COL_TEXT);
+    int y = 32;
+    auto line = [&](const char* label, const char* val) {
+        M5.Display.setTextColor(COL_HINT);
+        M5.Display.drawString(label, 8, y);
+        M5.Display.setTextColor(COL_TEXT);
+        M5.Display.drawString(val, 90, y);
+        y += 16;
+    };
+    if (d.device_class[0]) line("Type", d.device_class);
+    line("Name", d.name);
+    line(wifi ? "BSSID" : "Addr", d.id);
+    char buf[48];
+    snprintf(buf, sizeof buf, "%d dBm", d.strongest);
+    line("RSSI", buf);
+    if (wifi) {
+        line("Vendor", d.vendor);
+        line("Radio", d.kind);
+        line("Meta", d.detail);
+    } else {
+        line("Vendor", d.vendor);
+        line("Kind", d.kind);
+        line("AddrType", d.addr_type);
+        line("Detail", d.detail);
+        line("Beacon", d.is_ibeacon ? "iBeacon" : "no");
+    }
+    M5.Display.setTextDatum(bottom_center);
+    M5.Display.setTextColor(COL_HINT);
+    M5.Display.drawString("C / touch = back", 160, 236);
+}
+
+// Returns when user exits list. Continues background scan (caller keeps worker alive).
+static void device_list_screen(bool wifi) {
+    list_build_sorted();
+    int sel = 0, scroll = 0;
+    const int visible = 5;
+    draw_device_list(wifi, sel, scroll);
+    for (;;) {
+        M5.update();
+        if (M5.BtnC.wasClicked() || M5.BtnC.wasHold()) return;
+        auto t = M5.Touch.getDetail();
+        if (t.wasClicked() && t.y > 200) return;
+
+        if (M5.BtnB.wasClicked() || (t.wasClicked() && t.y > 100 && t.y < 180)) {
+            if (radar_n > 0) {
+                sel = (sel + 1) % radar_n;
+                if (sel >= scroll + visible) scroll = sel - visible + 1;
+                if (sel < scroll) scroll = sel;
+                draw_device_list(wifi, sel, scroll);
+            }
+        }
+        if (M5.BtnA.wasClicked()) {
+            if (radar_n > 0) {
+                sel = (sel - 1 + radar_n) % radar_n;
+                if (sel < scroll) scroll = sel;
+                if (sel >= scroll + visible) scroll = sel - visible + 1;
+                draw_device_list(wifi, sel, scroll);
+            }
+        }
+        if (M5.BtnA.wasHold() && radar_n > 0) {
+            draw_device_detail(wifi, sel);
+            while (true) {
+                M5.update();
+                if (M5.BtnC.wasClicked() || M5.BtnA.wasClicked()) break;
+                auto t2 = M5.Touch.getDetail();
+                if (t2.wasClicked()) break;
+                delay(20);
+            }
+            draw_device_list(wifi, sel, scroll);
+        }
+        // keep draining so list stays fresh
+        radar_drain();
+        if (radar_n > 0) {
+            static uint32_t last_sort = 0;
+            if (millis() - last_sort > 1500) {
+                last_sort = millis();
+                list_build_sorted();
+                draw_device_list(wifi, sel, scroll);
+            }
+        }
+        delay(20);
+    }
+}
+
 static void radar_run(bool wifi) {
     for (;;) {
         radar_reset();
@@ -510,6 +796,11 @@ static void radar_run(bool wifi) {
             M5.update();
             if (btn_exit()) { quit = true; break; }
             if (btn_action()) { rescan = true; break; }
+            if (btn_next()) {
+                // BtnB → device list (worker keeps scanning)
+                device_list_screen(wifi);
+                // redraw radar on return
+            }
             float h = radar_heading_update(hd);
             radar_live_yaw = h;
             radar_drain();
@@ -622,6 +913,15 @@ void setup() {
 
     Serial.begin(115200);
     Serial.println("DeviceRadar (Mantis) ready");
+
+    // Optional SD: place ble_ids.txt at card root for extended company/service names
+    // Core2 SD pins: SCK=18 MISO=38 MOSI=23 CS=4
+    SPI.begin(18, 38, 23, 4);
+    if (SD.begin(4, SPI, 25000000)) {
+        Serial.println("SD mounted — will load /ble_ids.txt if present");
+    } else {
+        Serial.println("SD not present (embedded ID tables still active)");
+    }
 
     // Core2 ships with MPU6886; M5Unified exposes it via M5.Imu
     bool imu_ok = false;

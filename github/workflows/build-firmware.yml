@@ -1,0 +1,149 @@
+name: build-firmware
+
+# Builds DeviceRadar for M5Stack Core2 via PlatformIO, packages a
+# web-flasher-ready dist/ (bootloader + partitions + app + manifest),
+# and publishes the web/ flasher + bins to GitHub Pages on main.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate sources (self-healing bootstrap)
+        run: |
+          set -e
+          zip=$(ls -t *.zip 2>/dev/null | head -1 || true)
+          if [ -n "$zip" ]; then
+            echo "Expanding $zip"
+            tmp=$(mktemp -d); unzip -oq "$zip" -d "$tmp"
+            entries=$(ls -A "$tmp")
+            if [ "$(echo "$entries" | wc -l)" -eq 1 ] && [ -d "$tmp/$entries" ]; then
+              src="$tmp/$entries"; else src="$tmp"; fi
+            cp -a "$src"/. ./ 2>/dev/null || (cd "$src" && tar cf - . | (cd "$OLDPWD" && tar xf -))
+            rm -rf "$tmp"
+          fi
+          # If dropped inside a subfolder, hoist
+          if [ ! -f platformio.ini ]; then
+            found=$(find . -name platformio.ini -not -path './.git/*' | head -1 || true)
+            if [ -n "$found" ]; then
+              root=$(dirname "$found")
+              cp -a "$root"/. ./ 2>/dev/null || (cd "$root" && tar cf - --exclude=.git . | (cd "$GITHUB_WORKSPACE" && tar xf -))
+            fi
+          fi
+          test -f platformio.ini || { echo "::error::platformio.ini not found"; exit 1; }
+          test -f src/main.cpp   || { echo "::error::src/main.cpp not found"; exit 1; }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: |
+          pip install -U platformio
+          pio --version
+
+      - name: Build firmware (m5stack-core2)
+        run: |
+          pio run -e m5stack-core2
+          echo "Build products:"
+          find .pio/build -type f \( -name "*.bin" -o -name "*.elf" \) | head -40
+
+      - name: Package dist for web flasher
+        run: |
+          set -e
+          mkdir -p dist
+          BUILD=.pio/build/m5stack-core2
+
+          # Core2 / ESP32 standard offsets (Arduino-ESP32 default)
+          # bootloader 0x1000, partition table 0x8000, app 0x10000
+          cp "$BUILD/bootloader.bin"        dist/bootloader.bin
+          cp "$BUILD/partitions.bin"        dist/partition-table.bin
+          cp "$BUILD/firmware.bin"          dist/device-radar.bin
+
+          # Optional: also keep the merged image if present
+          if [ -f "$BUILD/firmware.bin" ]; then
+            ls -la dist/
+          fi
+
+          # SHA sums
+          (cd dist && sha256sum * > SHA256SUMS)
+
+          # esp-web-tools manifest
+          python3 - <<'PY'
+          import json
+          manifest = {
+              "name": "DeviceRadar",
+              "version": "1.0.0",
+              "new_install_prompt_erase": True,
+              "builds": [{
+                  "chipFamily": "ESP32",
+                  "parts": [
+                      {"path": "bootloader.bin",       "offset": 4096},
+                      {"path": "partition-table.bin",  "offset": 32768},
+                      {"path": "device-radar.bin",     "offset": 65536}
+                  ]
+              }]
+          }
+          with open("dist/manifest.json", "w") as f:
+              json.dump(manifest, f, separators=(',', ':'))
+          print("manifest.json written")
+          PY
+
+          echo "=== dist ==="
+          ls -la dist/
+          cat dist/manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: device-radar-firmware
+          path: dist/
+
+      - name: Publish site (web flasher + firmware)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p site
+          cp -r web/* site/
+          mkdir -p site/firmware
+          cp -r dist/* site/firmware/
+          # ensure ID db is at site root for direct download
+          cp -f web/ble_ids.txt site/ble_ids.txt 2>/dev/null || true
+          cp -f assets/ble_ids.txt site/ble_ids.txt 2>/dev/null || true
+          touch site/.nojekyll
+          echo "Site contents:"
+          find site -type f | sort
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: site
+
+  deploy-pages:
+    if: github.ref == 'refs/heads/main'
+    needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
