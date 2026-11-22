@@ -56,7 +56,7 @@ static const OuiEntry kWifiOuis[] = {
     {0x341298, "Apple"},
     {0x3C15C2, "Apple"},
     {0x3C6A9D, "Espressif"},
-    {0x3CEF8C, "Samsung"},
+    {0x3CEF8C, "Dahua"},
     {0x484D7E, "Google"},
     {0x4C74BF, "Apple"},
     {0x500291, "Espressif"},
@@ -302,7 +302,7 @@ static void wifi_classify(WifiIdentity& out) {
     if (v && strstr(v, "Amazon")) {
         strncpy(out.device_class, "Amazon device", sizeof(out.device_class)-1); return;
     }
-    if (v && strstr(v, "Google") || wifi_name_has(s, "google")) {
+    if ((v && strstr(v, "Google")) || wifi_name_has(s, "google")) {
         strncpy(out.device_class, "Google device", sizeof(out.device_class)-1); return;
     }
     if (v && strstr(v, "Nest")) {
@@ -348,7 +348,7 @@ static void wifi_identify(int scan_index, WifiIdentity& out) {
     else if (oui)
         snprintf(out.vendor, sizeof(out.vendor), "OUI %06X", oui);
     else
-        strncpy(out.vendor, "—", sizeof(out.vendor)-1);
+        strncpy(out.vendor, "-", sizeof(out.vendor)-1);
 
     // kind = short radio summary
     snprintf(out.kind, sizeof(out.kind), "ch%d 2.4G %s", (int)out.channel, wifi_auth_name(out.encrypt));

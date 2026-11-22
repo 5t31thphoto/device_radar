@@ -297,7 +297,7 @@ static const OuiId kOuis[] = {
     {0x341298, "Apple"},
     {0x3C15C2, "Apple"},
     {0x3C6A9D, "Espressif"},
-    {0x3CEF8C, "Samsung"},
+    {0x3CEF8C, "Dahua"},
     {0x4C74BF, "Apple"},
     {0x500291, "Espressif"},
     {0x5433CB, "Apple"},
@@ -650,7 +650,7 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
     out.rssi = d.getRSSI();
 
     {
-        std::string a = d.getAddress().toString();
+        auto a = d.getAddress().toString();
         strncpy(out.addr, a.c_str(), sizeof(out.addr)-1);
     }
     uint8_t at = d.getAddressType();
@@ -676,14 +676,18 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
     }
 
     if (d.haveName()) {
-        std::string nm = d.getName();
+        auto nm = d.getName();
         strncpy(out.name, nm.c_str(), sizeof(out.name)-1);
     } else strncpy(out.name, "(no name)", sizeof(out.name)-1);
 
     // Manufacturer data
     const uint8_t* mfrp = nullptr; size_t mfrl = 0;
+    // Keep the buffer alive for the whole function — ble_classify() reads it at the end.
+    // Don't round-trip through c_str(): Apple's company ID 0x004C contains a 0x00 byte,
+    // which would cut the data to 1 byte and hide every Apple device.
+    decltype(d.getManufacturerData()) md;
     if (d.haveManufacturerData()) {
-        String md = d.getManufacturerData().c_str();
+        md = d.getManufacturerData();
         mfrp = (const uint8_t*)md.c_str(); mfrl = md.length();
         if (mfrl >= 2) {
             uint16_t cid = (uint16_t)mfrp[0] | ((uint16_t)mfrp[1] << 8);
@@ -726,10 +730,10 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
     }
 
     if (d.haveServiceUUID()) {
-        std::string us = d.getServiceUUID().toString();
+        auto us = d.getServiceUUID().toString();
         uint16_t u16 = 0; unsigned v=0;
-        if (us.size()>=4 && sscanf(us.c_str(), "%4x", &v)==1) u16=(uint16_t)v;
-        if (!u16 && us.size()>=8 && sscanf(us.c_str()+4, "%4x", &v)==1) u16=(uint16_t)v;
+        if (us.length()>=4 && sscanf(us.c_str(), "%4x", &v)==1) u16=(uint16_t)v;
+        if (!u16 && us.length()>=8 && sscanf(us.c_str()+4, "%4x", &v)==1) u16=(uint16_t)v;
         const char* sn = u16 ? service_name(u16) : nullptr;
         if (sn && !out.kind[0]) strncpy(out.kind, sn, sizeof(out.kind)-1);
         if (u16==0xFEAA) strncpy(out.kind, "Eddystone", sizeof(out.kind)-1);
@@ -738,7 +742,7 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
         if (u16==0xFD5A) strncpy(out.kind, "Samsung SmartTag svc", sizeof(out.kind)-1);
         if (!out.detail[0]) {
             if (sn) snprintf(out.detail, sizeof(out.detail), "svc %s", sn);
-            else { char s[12]; size_t n=us.size()<8?us.size():8; memcpy(s,us.c_str(),n); s[n]=0;
+            else { char s[12]; size_t n=us.length()<8?us.length():8; memcpy(s,us.c_str(),n); s[n]=0;
                    snprintf(out.detail, sizeof(out.detail), "svc %s", s); }
         }
     }
@@ -757,7 +761,7 @@ static void ble_identify(BLEAdvertisedDevice& d, BleIdentity& out) {
     if (d.haveServiceData() && !out.detail[0])
         snprintf(out.detail, sizeof(out.detail), "svcdata %uB", (unsigned)d.getServiceData().length());
 
-    if (!out.vendor[0]) strncpy(out.vendor, "—", sizeof(out.vendor)-1);
+    if (!out.vendor[0]) strncpy(out.vendor, "-", sizeof(out.vendor)-1);
     if (!out.kind[0])   strncpy(out.kind, "BLE device", sizeof(out.kind)-1);
 
     char prev[32]; strncpy(prev, out.device_class, sizeof(prev)-1);
