@@ -1,0 +1,248 @@
+# DeviceRadar BLE identifier database
+# Format: C,<hex_id>,<name>  or  S,<hex_uuid>,<name>
+# Source: Bluetooth SIG assigned numbers (public subset) + common vendor beacons
+# Place as /ble_ids.txt on Core2 SD card for full lookup; firmware embeds a smaller table.
+#
+C,0000,Ericsson
+C,0001,Nokia
+C,0002,Intel
+C,0003,IBM
+C,0004,Toshiba
+C,0005,3Com
+C,0006,Microsoft
+C,0007,Lucent
+C,0008,Motorola
+C,0009,Infineon
+C,000A,Qualcomm QTIL
+C,000B,Silicon Wave
+C,000C,Digianswer
+C,000D,Texas Instruments
+C,000E,Parthus
+C,000F,Broadcom
+C,0010,Mitel
+C,0011,Widcomm
+C,0012,Zeevo
+C,0013,Atmel
+C,0014,Mitsubishi
+C,0015,RTX
+C,0016,KC Technology
+C,0017,NewLogic
+C,0018,Transilica
+C,0019,Rohde & Schwarz
+C,001A,TTPCom
+C,001B,Signia
+C,001C,Conexant
+C,001D,Qualcomm
+C,001E,Inventel
+C,001F,AVM Berlin
+C,0020,BandSpeed
+C,0021,Mansella
+C,0022,NEC
+C,0023,WavePlus
+C,0024,Alcatel
+C,0025,NXP Semiconductors
+C,0026,C Technologies
+C,0027,Open Interface
+C,0028,R F Micro Devices
+C,0029,Hitachi
+C,002A,Symbol Technologies
+C,002B,Tenovis
+C,002C,Macronix
+C,002D,GCT Semiconductor
+C,002E,Norwood Microsystems
+C,002F,MewTel Technology
+C,0030,ST Microelectronics
+C,0031,Synopsys
+C,0032,Red-M
+C,0033,Commil
+C,0034,Catena Networks
+C,0035,Integrated System Solution
+C,0036,Renesas
+C,0037,Invision Technologies
+C,0038,ISSC Technologies
+C,0039,Plantronics
+C,003A,Nomadio
+C,003B,Gennum
+C,003C,MobileComm
+C,003D,IPextreme
+C,003E,Systems and Chips
+C,003F,Bluetooth SIG
+C,0040,Seiko Epson
+C,0041,Integrated Silicon Solution
+C,0042,CONWISE
+C,0043,PARROT
+C,0044,Socket Mobile
+C,0045,Atheros
+C,0046,MediaTek
+C,0047,Bluegiga
+C,0048,Marvell
+C,0049,3DSP
+C,004A,Accel Semiconductor
+C,004B,Continental Automotive
+C,004C,Apple
+C,004D,Staccato
+C,004E,Avago
+C,004F,APT
+C,0050,SiRF
+C,0051,Tzero
+C,0052,J&M
+C,0053,Free2move
+C,0054,3Di
+C,0055,Planet Communication
+C,0056,HP
+C,0057,Ralink
+C,0058,RDA
+C,0059,Nordic Semiconductor
+C,005A,EM Microelectronic
+C,005B,Ralink
+C,005C,Belkin
+C,005D,Realtek
+C,005E,Stonestreet One
+C,005F,Wicentric
+C,0060,Rivada Networks
+C,0061,Delphi
+C,0062,TiVo
+C,0063,Sennheiser
+C,0064,Summit Data
+C,0065,BLU
+C,0067,A&D Engineering
+C,0068,General Motors
+C,0069,UD Technology
+C,006A,Maxon
+C,006B,Cambridge Silicon Radio
+C,006C,Seiko Instruments
+C,006D,Shenzhen Goodix
+C,006E,Rafael Microelectronics
+C,006F,Quest Engineering
+C,0070,Dongguan YX
+C,0075,Samsung Electronics
+C,0076,Creative Technology
+C,0077,Laird Connectivity
+C,0078,Nike
+C,0079,lesswire
+C,007A,MStar Semiconductor
+C,007B,Hanlynn Technologies
+C,007C,A&R Cambridge
+C,007D,Seers Technology
+C,007E,Sports Tracking Technologies
+C,007F,Autonet Mobile
+C,0080,DeLorme Publishing
+C,0081,WuXi Vimicro
+C,0082,Sennheiser Communications
+C,0083,TimeKeeping Systems
+C,0084,Ludus Helsinki
+C,0085,BlueRadios
+C,0086,Equinux
+C,0087,Garmin
+C,0088,Ecotest
+C,0089,GN ReSound
+C,008A,Jawbone
+C,008B,Topcon Healthcare
+C,008C,Gimbal
+C,008D,GN Netcom
+C,008E,Schneider Electric
+C,008F,Trek
+C,0090,Tencent
+C,0091,Nordic UART
+C,00D2,Microsoft Band
+C,00E0,Google
+C,0131,Cypress Semiconductor
+C,0157,Anhui Huami
+C,01D1,OMRON
+C,01FF,Google
+C,0201,Dialog Semiconductor
+C,02E5,Espressif
+C,0310,Sennheiser Electronic
+C,03C2,Xiaomi
+C,03DA,EnOcean
+C,0499,Ruuvi Innovations
+C,0500,Wiliot
+C,0528,Garmin International
+C,0583,Code Blue Communications
+C,05A7,Sonos
+C,05C1,Tile
+C,0601,Bose
+C,0639,Minew Technologies
+C,06D5,Honor Device
+C,0714,OPPO
+C,079A,Huawei Technologies
+C,0822,Nothing Technology
+C,08A9,OnePlus Technology
+C,0A62,MOKO Technology
+C,0B62,vivo Mobile
+C,0D28,Fitbit
+C,0F0E,Oura Health
+S,1800,Generic Access
+S,1801,Generic Attribute
+S,1802,Immediate Alert
+S,1803,Link Loss
+S,1804,Tx Power
+S,1805,Current Time
+S,1806,Reference Time Update
+S,1807,Next DST Change
+S,1808,Glucose
+S,1809,Health Thermometer
+S,180A,Device Information
+S,180D,Heart Rate
+S,180E,Phone Alert Status
+S,180F,Battery Service
+S,1810,Blood Pressure
+S,1811,Alert Notification
+S,1812,Human Interface Device
+S,1813,Scan Parameters
+S,1814,Running Speed and Cadence
+S,1815,Automation IO
+S,1816,Cycling Speed and Cadence
+S,1818,Cycling Power
+S,1819,Location and Navigation
+S,181A,Environmental Sensing
+S,181B,Body Composition
+S,181C,User Data
+S,181D,Weight Scale
+S,181E,Bond Management
+S,181F,Continuous Glucose Monitoring
+S,1820,Internet Protocol Support
+S,1821,Indoor Positioning
+S,1822,Pulse Oximeter
+S,1823,HTTP Proxy
+S,1824,Transport Discovery
+S,1825,Object Transfer
+S,1826,Fitness Machine
+S,1827,Mesh Provisioning
+S,1828,Mesh Proxy
+S,1829,Reconnection Configuration
+S,183A,Insulin Delivery
+S,183B,Binary Sensor
+S,183C,Emergency Configuration
+S,183D,Authorization Control
+S,183E,Physical Activity Monitor
+S,1843,Audio Stream Control
+S,1844,Broadcast Audio Scan
+S,1845,Published Audio Capabilities
+S,1846,Basic Audio Announcement
+S,1847,Broadcast Audio Announcement
+S,1848,Common Audio
+S,1849,Hearing Access
+S,184A,Telephony and Media Audio
+S,184B,Public Broadcast Announcement
+S,184C,Volume Control
+S,184D,Volume Offset Control
+S,184E,Coordinated Set Identification
+S,184F,Microphone Control
+S,1850,Audio Input Control
+S,1851,Telephone Bearer
+S,1852,Generic Telephone Bearer
+S,1853,Microphone Control
+S,1854,Audio Stream Control Point
+S,1855,Broadcast Audio Scan Control Point
+S,FEAA,Eddystone
+S,FD6F,Exposure Notification
+S,FE2C,Google Fast Pair
+S,FE9F,Google
+S,FE95,Xiaomi
+S,FD5A,Samsung
+S,FD1D,Samsung
+S,FD22,Huawei
+S,FD21,Huawei
+S,FD36,Google
+S,FE59,Nordic UART
