@@ -17,14 +17,18 @@
 #include "audit_ui.h"
 #include "audit_sense.h"
 
-static void threat_audit_run() {
-    Serial.println("audit: start");
+static bool aud_alloc() {
     if (!aud_ap)    aud_ap    = (AudAP*)radar_alloc_mem(sizeof(AudAP) * AUD_MAX_AP);
     if (!aud_sta)   aud_sta   = (AudSta*)radar_alloc_mem(sizeof(AudSta) * AUD_MAX_STA);
     if (!aud_probe) aud_probe = (AudProbe*)radar_alloc_mem(sizeof(AudProbe) * AUD_MAX_PROBE);
     if (!aud_trk)   aud_trk   = (AudTrk*)radar_alloc_mem(sizeof(AudTrk) * AUD_MAX_TRK);
     if (!aud_q)     aud_q     = xQueueCreate(128, sizeof(AudFrame));
-    if (!aud_ap || !aud_sta || !aud_probe || !aud_trk || !aud_q) {
+    return aud_ap && aud_sta && aud_probe && aud_trk && aud_q;
+}
+
+static void threat_audit_run() {
+    Serial.println("audit: start");
+    if (!aud_alloc()) {
         show_message("audit: out of memory", COL_RED);
         delay(1500);
         return;
@@ -49,7 +53,7 @@ static void threat_audit_run() {
         if (M5.BtnB.wasClicked()) {
             int next = (view + 1) % V_COUNT;
             if (view == V_SENSE) sense_end();
-            if (next == V_SENSE) { draw_sense(); sense_begin(); }
+            if (next == V_SENSE) sense_begin();
             view = next;
             last_draw = 0;
         }

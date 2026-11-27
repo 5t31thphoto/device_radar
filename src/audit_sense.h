@@ -203,6 +203,7 @@ static void sense_drain() {
 struct SenseState { int active, moving; bool any, at_you, learning; };
 static SenseState sense_state() {
     SenseState st = {0, 0, false, false, false};
+    if (!sense_links) return st;
     uint32_t now = millis();
     st.learning = now - sense_start_t < 8000;
     for (int i = 0; i < SENSE_LINKS; ++i) {
@@ -249,7 +250,19 @@ static void sense_begin() {
     sense_csi_ok = false;
     Serial.printf("SENSE: ch %d, CSI not built into this core, RSSI mode\n", best);
 #endif
-    radar_heading_calibrate(sense_hd);               // heading-up dial (hold still)
+    if (canvas) {                                    // heading calibration: 0.8 s, hold still
+    canvas->fillSprite(COL_BG);
+    aud_header("SENSE // AMBIENT MOTION", V_SENSE);
+    canvas->setFont(&fonts::Font4);
+    canvas->setTextDatum(middle_center);
+    canvas->setTextColor(COL_LIME);
+    canvas->drawString("HOLD STILL", 160, 110);
+    canvas->setFont(&fonts::Font0);
+    canvas->setTextColor(COL_DIM);
+    canvas->drawString("calibrating heading", 160, 138);
+    canvas->pushSprite(0, 0);
+    }
+    radar_heading_calibrate(sense_hd);
     sense_start_t = millis();
     sense_motion_prev = sense_atyou_prev = false;
     sense_sweeping = false;
@@ -351,6 +364,15 @@ static const char* sense_mode_str() {
 static void draw_sense() {
     canvas->fillSprite(COL_BG);
     aud_header("SENSE // AMBIENT MOTION", V_SENSE);
+    if (!sense_links || !aud_sense_on) {               // allocation failed: say so instead of crashing
+        canvas->setFont(&fonts::Font2);
+        canvas->setTextDatum(middle_center);
+        canvas->setTextColor(COL_RED);
+        canvas->drawString("SENSE unavailable (low memory)", 160, 120);
+        aud_footer("B next view   C exit");
+        canvas->pushSprite(0, 0);
+        return;
+    }
     uint32_t now = millis();
     SenseState st = sense_state();
     char b[64];

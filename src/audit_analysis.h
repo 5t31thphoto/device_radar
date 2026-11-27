@@ -655,11 +655,13 @@ static void aud_schedule(uint32_t now) {
 }
 
 // Keep the radios scheduled and the picture current; call from every audit screen.
+static bool aud_hunt_only = false;                  // radar-launched fox hunt: radio + drains only
 static void aud_tick() {
     uint32_t now = millis();
     aud_schedule(now);
     aud_wifi_drain();
     aud_ble_drain();
+    if (aud_hunt_only) return;
     if (now - aud_place_t >= 30000) { aud_place_t = now; aud_update_places(); }
     if (now - aud_crowd_t >= 30000) {
         aud_crowd_t = now;

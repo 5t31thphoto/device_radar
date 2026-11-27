@@ -10,6 +10,7 @@
  *   Radar  – BtnA rescan · BtnB device list · BtnC (or hold A) exit · tap a dot for its details
  *   List   – tap a row to select it, tap it again for details · swipe to page
  *            BtnA up · BtnB down · hold A details · BtnC or "< back" to return
+ *   Details – BtnA (or the HUNT button) fox-hunts that device · BtnB/BtnC/tap = back
  */
 
 #include <M5Unified.h>
@@ -714,6 +715,8 @@ static int blip_at(int x, int y) {
 // ---------------------------------------------------------------------------
 //  Device detail + list screens (WiFi + BLE)
 // ---------------------------------------------------------------------------
+static constexpr int HUNT_X = 6, HUNT_Y = 212, HUNT_W = 104, HUNT_H = 24;
+
 static void draw_device_detail(bool wifi, int src) {
     if (!canvas || src < 0 || src >= radar_n) return;
     RadarSource& d = radar_sources[src];
@@ -755,12 +758,20 @@ static void draw_device_detail(bool wifi, int src) {
     snprintf(buf, sizeof buf, "%lus ago", (unsigned long)((millis() - d.seen) / 1000));
     line("Seen", buf);
 
+    // HUNT button (also BtnA): fox-hunt this one device
+    canvas->fillRoundRect(HUNT_X, HUNT_Y, HUNT_W, HUNT_H, 6, COL_RED);
+    canvas->setFont(&fonts::Font2);
+    canvas->setTextDatum(middle_center);
+    canvas->setTextColor(COL_TEXT);
+    canvas->drawString("A  HUNT", HUNT_X + HUNT_W / 2, HUNT_Y + HUNT_H / 2);
     canvas->setFont(&fonts::Font0);
-    canvas->setTextDatum(bottom_center);
+    canvas->setTextDatum(middle_right);
     canvas->setTextColor(COL_HINT);
-    canvas->drawString("tap or any button = back", 160, 238);
+    canvas->drawString("B / C / tap = back", 314, HUNT_Y + HUNT_H / 2);
     canvas->pushSprite(0, 0);
 }
+
+static void radar_hunt(bool wifi, int src);          // threat_audit.h has the hunter
 
 static void device_detail_screen(bool wifi, int src, RadarHeading& hd) {
     Serial.printf("detail: %d\n", src);
@@ -770,10 +781,21 @@ static void device_detail_screen(bool wifi, int src, RadarHeading& hd) {
         M5.update();
         heading_tick(hd);
         radar_drain();
-        if (M5.BtnA.wasClicked() || M5.BtnB.wasClicked() ||
-            M5.BtnC.wasClicked() || M5.BtnC.wasHold()) break;
+        bool hunt = M5.BtnA.wasClicked();
+        if (M5.BtnB.wasClicked() || M5.BtnC.wasClicked() || M5.BtnC.wasHold()) break;
         int tx, ty;
-        if (screen_tap(tx, ty)) break;
+        if (screen_tap(tx, ty)) {
+            if (tx >= HUNT_X && tx < HUNT_X + HUNT_W && ty >= HUNT_Y - 6) hunt = true;
+            else break;
+        }
+        if (hunt) {
+            radar_hunt(wifi, src);
+            radar_heading_calibrate(hd);             // the hunt turned you around: re-zero the map
+            radar_live_yaw = 0;
+            draw_device_detail(wifi, src);
+            last = millis();
+            continue;
+        }
         if (millis() - last > 1000) { last = millis(); draw_device_detail(wifi, src); }
         delay(15);
     }
@@ -1054,6 +1076,59 @@ static void radar_run(bool wifi) {
 //  WiFi threat audit (SITREP) — passive monitor-mode threat scanner
 // ---------------------------------------------------------------------------
 #include "threat_audit.h"
+
+// FOX HUNT straight from the radar's detail page. The radar's scan worker and
+// the audit engine can't share the radio, so: stop the radar, run the audit
+// engine for just this one radio (BLE-only hunts leave WiFi off entirely, which
+// gives BLE the whole radio), hunt, then restore the radar scanner.
+static void radar_hunt(bool wifi, int src) {
+    if (src < 0 || src >= radar_n) return;
+    RadarSource d = radar_sources[src];              // copy: the worker restarts later
+    FoxTarget t;
+    memset(&t, 0, sizeof t);
+    t.ble = !wifi;
+    t.ent = wifi ? ENT_AP : ENT_TRK;
+    t.idx = -1;
+    bool named = d.name[0] && d.name[0] != '(' && strcmp(d.name, "-");   // not "(hidden)" / "(no name)"
+    if (named) snprintf(t.label, sizeof t.label, "%s", d.name);
+    else snprintf(t.label, sizeof t.label, "%s %s", d.vendor[0] && strcmp(d.vendor, "-") ? d.vendor : "device",
+                  strlen(d.id) > 8 ? d.id + strlen(d.id) - 8 : d.id);
+    if (wifi) {
+        unsigned m[6];
+        if (sscanf(d.id, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6) return;
+        for (int i = 0; i < 6; ++i) t.mac[i] = (uint8_t)m[i];
+        t.ch = d.channel > 0 ? (uint8_t)d.channel : 0;
+    } else {
+        strncpy(t.addr, d.id, sizeof t.addr - 1);
+    }
+    Serial.printf("radar hunt: %s %s ch %d\n", t.label, wifi ? d.id : t.addr, t.ch);
+
+    show_message("handing radio to hunter...", COL_HINT);
+    radar_worker_stop();
+    radio_teardown();
+
+    if (!aud_alloc()) {
+        show_message("hunt: out of memory", COL_RED);
+        delay(1500);
+    } else {
+        aud_reset();
+        aud_in_ble = false; aud_hold = HOLD_NONE; aud_sweeps = 0; aud_lock_ch = 0;
+        aud_hunt_only = true;                        // no audit alerts/banners during a radar hunt
+        bool up = true;
+        if (wifi) aud_wifi_start();
+        else { aud_ble_start(); up = aud_ble_ok; }
+        if (up) fox_hunt(t);
+        else { show_message("BLE unavailable", COL_RED); delay(1500); }
+        if (wifi) aud_wifi_stop();
+        else aud_ble_stop();
+        aud_in_ble = false; aud_hold = HOLD_NONE; aud_lock_ch = 0;
+        aud_hunt_only = false;
+    }
+
+    show_message("restoring radar...", COL_HINT);
+    bool ok = wifi ? radio_setup_wifi() : radio_setup_ble();
+    if (ok) radar_worker_start(wifi);
+}
 
 // ---------------------------------------------------------------------------
 //  Splash + menu

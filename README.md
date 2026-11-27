@@ -171,6 +171,8 @@ core2_radar/
 | List | Select / details | Tap a row / tap it again (or hold BtnA) |
 | List | Move | BtnA up · BtnB down · swipe to page |
 | List | Back | BtnC or tap `< back` |
+| Details | Fox hunt this device (WiFi AP or BLE) | BtnA or tap `A HUNT` |
+| Details | Back | BtnB, BtnC or tap anywhere else |
 | Audit | Change view | BtnB |
 | Audit | Intel | Tap a row |
 | Audit | Fox hunt / challenge | BtnA / BtnB in Intel |
